@@ -24,6 +24,7 @@ def read_test(file):
 
 
 def run_test_case(input_path, output_path):
+
     grid = read_test(input_path) 
     # print(grid)
     
@@ -57,7 +58,7 @@ def run_test_case(input_path, output_path):
         
         for row in grid_ans:
             row_str = "".join(f"\"{str(x)}\", " for x in row)
-            row_str = "[" + row_str + "]"
+            row_str = "[" + row_str[:-2] + "]"
             f.write(row_str + "\n")
             
     print(f"Writing input to: {output_path}")

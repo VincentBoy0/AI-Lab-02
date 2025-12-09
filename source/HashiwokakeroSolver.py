@@ -185,7 +185,7 @@ class HashiSolver:
     def solve(self):
         # print(len(self.nodes), len(self.potential_edges))
         self.build_constraints()
-        for _ in range(10):
+        for _ in range(50000):
             if not self.solver.solve():
                 return None
             model = self.solver.get_model()
