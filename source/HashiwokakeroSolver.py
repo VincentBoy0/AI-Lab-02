@@ -183,8 +183,11 @@ class HashiSolver:
             self.solver.add_clause(z_vars)
 
     def solve(self):
+        # print(len(self.nodes), len(self.potential_edges))
         self.build_constraints()
-        while self.solver.solve():
+        for _ in range(10):
+            if not self.solver.solve():
+                return None
             model = self.solver.get_model()
 
             # Take valid edges
@@ -213,6 +216,12 @@ class HashiSolver:
             if dsu.check_connected():
                 return result_edges
             
-            return None
+            # remove the case if there is more than 1 connected components
+            remove_all_edges = []
+            for ((u, v), cnt) in result_edges:
+                node_id = self._get_id_var(u, v, cnt)
+                remove_all_edges.append(-node_id)
+
+            self.solver.add_clause(remove_all_edges)
     
         return None

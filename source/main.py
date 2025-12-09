@@ -25,6 +25,7 @@ def read_test(file):
 
 def run_test_case(input_path, output_path):
     grid = read_test(input_path) 
+    # print(grid)
     
     print(f"Solving input from file: {input_path}")
     
