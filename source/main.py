@@ -1,4 +1,5 @@
 from HashiwokakeroSolver import HashiSolver
+from additional_algorithms.backtrack import Backtrack
 import os
 import copy
 def read_test(file):
@@ -24,7 +25,8 @@ def read_test(file):
 
 
 def run_test_case(input_path, output_path):
-
+    # if not(input_path == r"tests\input\input-01.txt" or input_path == r"tests\input\input-02.txt"):
+    #     return
     grid = read_test(input_path) 
     # print(grid)
     
@@ -32,7 +34,7 @@ def run_test_case(input_path, output_path):
     
     solver = HashiSolver(grid)
     ans = solver.solve()
-
+    # print(ans)
 
     with open(output_path, "w", encoding="utf-8") as f:
         if ans is None:
@@ -42,7 +44,7 @@ def run_test_case(input_path, output_path):
             return
 
         grid_ans = copy.deepcopy(grid)
-        
+        # print(ans)
         for edge in ans:
             ((u, v), cnt) = edge # Unpack tuple
         
@@ -64,8 +66,8 @@ def run_test_case(input_path, output_path):
     print(f"Writing input to: {output_path}")
 
 def run():
-    input_folder = "tests\input"
-    output_folder = "tests\output"
+    input_folder = r"tests\input"
+    output_folder = r"tests\output"
 
     os.makedirs(output_folder, exist_ok=True)
     files = sorted(os.listdir(input_folder))
