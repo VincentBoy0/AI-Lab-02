@@ -1,5 +1,7 @@
 from HashiwokakeroSolver import HashiSolver
 from additional_algorithms.backtrack import Backtrack
+from additional_algorithms.brute_force import BruteForce
+from additional_algorithms.A_Star import AStar
 from additional_algorithms.astar_solver import AStarHashiSolver
 import os
 import copy
