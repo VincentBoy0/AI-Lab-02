@@ -1,7 +1,9 @@
 from HashiwokakeroSolver import HashiSolver
 from additional_algorithms.backtrack import Backtrack
+from additional_algorithms.astar_solver import AStarHashiSolver
 import os
 import copy
+import time
 def read_test(file):
     arr = []
     with open(file, 'r') as inp:
@@ -24,16 +26,27 @@ def read_test(file):
     return arr
 
 
-def run_test_case(input_path, output_path):
+def run_test_case(input_path, output_path, solver_type="sat"):
     # if not(input_path == r"tests\input\input-01.txt" or input_path == r"tests\input\input-02.txt"):
     #     return
     grid = read_test(input_path) 
     # print(grid)
     
-    print(f"Solving input from file: {input_path}")
+    print(f"Solving input from file: {input_path} using {solver_type.upper()} solver")
     
-    solver = HashiSolver(grid)
-    ans = solver.solve()
+    start_time = time.time()
+    
+    if solver_type == "astar":
+        solver = AStarHashiSolver(grid)
+        ans = solver.solve()
+        stats = solver.get_statistics()
+        print(f"  A* Stats: {stats}")
+    else:
+        solver = HashiSolver(grid)
+        ans = solver.solve()
+    
+    elapsed = time.time() - start_time
+    print(f"  Time: {elapsed:.4f}s")
     # print(ans)
 
     with open(output_path, "w", encoding="utf-8") as f:
@@ -65,7 +78,7 @@ def run_test_case(input_path, output_path):
             
     print(f"Writing input to: {output_path}")
 
-def run():
+def run(solver_type="sat"):
     input_folder = r"tests\input"
     output_folder = r"tests\output"
 
@@ -79,7 +92,9 @@ def run():
         if not os.path.isfile(input_path) or not filename.endswith(".txt"):
             continue
 
-        run_test_case(input_path, output_path)
+        run_test_case(input_path, output_path, solver_type)
 
 if __name__ == "__main__":
-    run()
+    import sys
+    solver = sys.argv[1] if len(sys.argv) > 1 else "sat"
+    run(solver)

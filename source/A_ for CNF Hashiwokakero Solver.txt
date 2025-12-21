@@ -1,0 +1,216 @@
+﻿Heuristic Search Strategies for Propositional Satisfiability: Designing an A* Solver for the Hashiwokakero Puzzle on the CNF Solution Space
+Executive Summary
+The computational landscape of logic puzzles, particularly those belonging to the NP-complete complexity class, has traditionally been dominated by two distinct algorithmic paradigms: backtracking search with constraint propagation (Constraint Programming) and reduction to Boolean Satisfiability (SAT) solved via Conflict-Driven Clause Learning (CDCL). The Hashiwokakero puzzle, a graph-theoretic challenge involving the interconnection of "islands" via orthogonal "bridges" to satisfy degree constraints and connectivity, represents a quintessential problem in this domain. While modern SAT solvers like PySAT offer high-performance "black-box" solutions, they often lack the transparency and path-optimality guarantees provided by informed search methods like A*. This report presents a comprehensive theoretical and practical framework for replacing the standard CDCL architecture with an A* algorithm that operates directly on the Conjunctive Normal Form (CNF) solution space.
+We establish a rigorous structural analogy between the Hashiwokakero puzzle and the Graph Coloring Problem (GCP), demonstrating that the "saturation" heuristics used in GCP (such as DSatur) find a direct mathematical equivalent in the "remaining capacity" metrics of Hashiwokakero islands. By formalizing the search space as a traversal of the Boolean hypercube of partial assignments, we define a search graph where nodes are partial valuations and edges represent decision literals. Central to this architecture is the derivation of a domain-specific cost function $g(n)$, defined as the number of satisfied bridge segments, and a heuristic function $h(n)$, derived from a relaxed problem model involving the sum of residual island capacities.
+This report provides formal mathematical proofs demonstrating that this specific heuristic formulation is both admissible (never overestimating the cost to the goal) and consistent (satisfying the triangle inequality), thereby guaranteeing that the A* algorithm will identify optimal bridge configurations without the need for exhaustive backtracking, provided the heuristic is sufficiently informed. Furthermore, we discuss the integration of lazy connectivity constraints and unit propagation within the A* expansion step, effectively hybridizing the deductive power of SAT solvers with the directed intelligence of heuristic search. This approach offers a novel methodology for solving Hashiwokakero that prioritizes semantic understanding of the puzzle's structure over the brute-force inference typical of generic SAT solvers.
+1. Problem Context and Computational Complexity
+1.1 The Hashiwokakero Puzzle Definition
+Hashiwokakero (often abbreviated as "Hashi" or "Bridges") is a logic puzzle played on a rectangular grid of dimensions $W \times H$. The grid contains a set of "islands," represented as circles with integer values ranging from 1 to 8. The objective is to connect these islands according to a strict set of topological and numerical constraints.1 The puzzle is solved when all islands form a single connected component graph, and all local degree constraints are satisfied.
+The rules of Hashiwokakero formally define the constraints of the system:
+1. Orthogonality: Bridges may only run horizontally or vertically.
+2. Adjacency: Bridges must connect distinct islands and may not cross other islands or bridges.
+3. Multiplicity: At most two bridges may connect any pair of islands (a single or double bridge).
+4. Capacity (Degree Constraint): The number of bridges connected to an island must equal the integer inscribed within it.
+5. Connectivity: The entire graph of islands and bridges must be connected; that is, a path must exist between any two islands.1
+These rules transform the puzzle into a complex Constraint Satisfaction Problem (CSP).3 The requirement for a single connected component essentially imposes a global constraint that is difficult to encode locally, distinguishing Hashiwokakero from simpler puzzles like Sudoku.
+1.2 Complexity Class and SAT Reduction
+The decision problem—"Does a valid Hashiwokakero solution exist for a given grid?"—is known to be NP-complete.1 This classification implies that no known polynomial-time algorithm exists to solve all instances of the puzzle, and in the worst case, the time complexity grows exponentially with the number of islands. The proof of NP-completeness typically involves a reduction from the Hamiltonian Cycle problem in unit-distance graphs.1
+Because the problem is NP-complete, it can be polynomially reduced to the Boolean Satisfiability Problem (SAT). This reduction involves encoding the puzzle state into a Boolean formula $\Phi$ such that $\Phi$ is satisfiable if and only if the puzzle has a solution.4 The standard approach utilizes a SAT solver (like those found in the PySAT library) which accepts $\Phi$ in Conjunctive Normal Form (CNF) and employs the CDCL algorithm to find a satisfying truth assignment.6
+1.3 Limitations of Standard SAT Solvers
+While solvers like Glucose or MiniSat (accessible via PySAT) are highly optimized, they operate as "black boxes." They utilize heuristics like VSIDS (Variable State Independent Decaying Sum) which prioritize variables based on their recent activity in conflict clauses.7 This approach focuses on proving satisfiability or unsatisfiability as quickly as possible, often by making decisions that quickly lead to conflicts to learn from them.
+However, for a user interested in the structure of the solution or in finding a solution that minimizes a specific cost metric (e.g., finding the "simplest" solution first, or solving in a way that mimics human intuition), CDCL is opaque. It does not perform a cost-based search. Replacing this with an A* algorithm allows us to inject domain-specific knowledge (heuristics) directly into the search process, transforming the solver from a generic logic engine into a specialized topological architect.
+2. The Theoretical Analogy: Graph Coloring vs. Hashiwokakero
+To design an effective A* heuristic for Hashiwokakero, we look to the Graph Coloring Problem (GCP) for inspiration. The mapping between these two domains provides the theoretical justification for the "saturation-based" heuristics we will develop.
+2.1 Structural Isomorphism
+In the Graph Coloring Problem, we are given a graph $G = (V, E)$ and a set of $k$ colors. The goal is to assign a color $c(v)$ to each vertex $v \in V$ such that no two adjacent vertices share the same color ($c(u) \neq c(v)$ for all $(u, v) \in E$).8
+The analogy to Hashiwokakero is robust when we consider the nature of the constraints:
+Graph Coloring Feature
+	Hashiwokakero Equivalent
+	Vertices ($V$)
+	Islands (nodes in the grid).
+	Edges ($E$)
+	Potential Bridges (adjacency in the grid).
+	Colors ($k$)
+	Capacity (the number 1-8 on the island).
+	Constraint: $c(u) \neq c(v)$
+	Constraint: Bridge Existence/Crossing. Building a bridge "consumes" capacity from both endpoints and "blocks" crossing paths.
+	Saturation
+	Residual Capacity. How many more bridges an island must take.
+	In GCP, the difficulty of coloring a vertex is determined by its "saturation degree"—the number of different colors already assigned to its neighbors.9 A vertex adjacent to neighbors using Red, Green, and Blue is highly constrained; it has fewer options left.
+In Hashiwokakero, an island behaves similarly. An island with a capacity of 4 that already has 3 bridges connected to it has a "residual capacity" of 1. It is highly saturated. Just as the DSatur (Degree of Saturation) algorithm for GCP prioritizes the most saturated vertices to minimize the branching factor 9, our A* solver for Hashiwokakero should prioritize islands with the lowest remaining freedom (highest saturation relative to their initial demand).
+2.2 Heuristic Transfer: From DSatur to Bridge Saturation
+The DSatur heuristic in graph coloring is a constructive heuristic that dynamically orders vertices.9 It selects the vertex with the highest number of colored neighbors. If we invert this logic for A* (which minimizes cost), we view "saturation" as a measure of progress toward the goal state.
+In the context of the CNF representation:
+* GCP: Assigning a color is a decision variable $x_{v,c} = \text{True}$.
+* Hashi: Assigning a bridge is a decision variable $x_{edge} = \text{True}$.
+The analogy suggests that a good heuristic $h(n)$ for Hashiwokakero should measure the "distance to saturation." In GCP, we are done when every node is colored. In Hashiwokakero, we are done when every island's capacity is filled (saturated). Therefore, the heuristic should quantify the unsaturated capacity remaining in the grid. This leads us directly to a capacity-based heuristic function, where the "cost" is the remaining bridge segments required to satisfy all island constraints. This parallels the "number of uncolored vertices" or "sum of minimal candidate sets" in advanced GCP heuristics.11
+3. Defining the Search Graph on the CNF Solution Space
+To apply A* to a SAT problem, we must formally define the "graph" that the algorithm traverses. This is not the graph of islands and bridges, but the state space graph of the Boolean formula.
+3.1 The Boolean Variables (Dimensions of the Space)
+First, we establish the variables of our CNF encoding. Let the set of islands be $I$. We identify all possible orthogonal connections between islands. Let $E_{possible}$ be the set of all pairs $(u, v)$ such that islands $u$ and $v$ are on the same row or column with no islands between them.
+For each pair $e \in E_{possible}$, we introduce variables representing the number of bridges 12:
+* $x_{e, 1}$: True if there is at least 1 bridge on edge $e$.
+* $x_{e, 2}$: True if there are 2 bridges on edge $e$.
+The set of all such Boolean variables constitutes the variables of our SAT problem: $X = \{x_{e,k} \mid e \in E_{possible}, k \in \{1,2\}\}$.
+The size of the search space is $2^{|X|}$, which is the Boolean hypercube.
+3.2 Nodes: Partial Truth Assignments
+A node $n$ in our A* search graph represents a partial truth assignment (or partial valuation) $\rho_n$.2
+* $\rho_n: X \to \{\text{True}, \text{False}, \text{Unassigned}\}$.
+* Root Node ($n_{start}$): The state where all variables are Unassigned (or initialized by unit propagation from fixed constraints, such as '4' in a corner).
+* Goal Node ($n_{goal}$): A complete assignment (no variables are Unassigned) that satisfies all clauses in the CNF formula $\Phi$.
+* Terminal/Dead Nodes: Partial assignments that falsify at least one clause in $\Phi$. These are pruned immediately (infinite cost).
+3.3 Edges: Decision Literals
+An edge in the search graph represents a decision or a branching step.13 From a node $n$ with partial assignment $\rho_n$, we select an unassigned variable $v \in X$ (using a variable ordering heuristic, discussed later) and generate two child nodes:
+1. Positive Branch: $n_{true} = \rho_n \cup \{v = \text{True}\}$.
+2. Negative Branch: $n_{false} = \rho_n \cup \{v = \text{False}\}$.
+Unlike standard DPLL which explores these depth-first, A* adds both children to the priority queue (OPEN list) and selects the next node to expand based on the lowest total cost $f(n)$.
+3.4 Handling Connectivity Constraints in the Search Graph
+A crucial aspect of the search graph definition for Hashiwokakero is the connectivity constraint. Encoding "all islands must be connected" in static CNF requires $O(N^3)$ clauses (transitive closure), which explodes the formula size.14
+In our A* formulation, we treat connectivity as a lazy constraint.14 The nodes in our search graph essentially relax the connectivity constraint until the heuristic or a specific check enforces it.
+* Lazy Check: When a node $n$ represents a state where a subset of islands has become "saturated" (capacity full) but is not connected to the rest of the graph, that node is invalid. We prune these nodes dynamically without needing explicit CNF clauses for every possible disconnection.
+4. Defining the Cost Function $g(n)$ and Heuristic $h(n)$
+The core of the A* algorithm is the evaluation function $f(n) = g(n) + h(n)$. To ensure the algorithm is optimal and efficient, we must define these functions carefully to reflect the specific mechanics of Hashiwokakero.
+4.1 The Cost Function $g(n)$
+In pathfinding, $g(n)$ is the distance traveled from the start. In our SAT search space, "distance" corresponds to the accumulation of bridge segments. Since the goal of the puzzle is to satisfy island capacities, and capacities are satisfied by building bridges, the "cost" we have incurred so far is the number of bridges we have committed to building.
+Definition: Let $g(n)$ be the total number of bridge segments assigned to True in the partial assignment $\rho_n$.
+
+
+
+
+$$g(n) = \sum_{(u, v) \in E_{possible}} \left( \mathbb{I}(x_{uv, 1} \in \rho_n \land x_{uv, 1}=\text{True}) + \mathbb{I}(x_{uv, 2} \in \rho_n \land x_{uv, 2}=\text{True}) \right)$$
+Here, $\mathbb{I}$ is the indicator function. A double bridge counts as 2 units of cost; a single bridge counts as 1.
+Justification:
+This definition of $g(n)$ is robust because the total number of bridges in a valid solution is a fixed constant for any given puzzle instance. The sum of all island capacities is $C_{total} = \sum_{i \in I} D_i$. Since every bridge has two endpoints, the total number of bridges $B_{total}$ must be exactly $C_{total} / 2$.
+Therefore, searching for a solution is equivalent to searching for a path of length $B_{total}$ in the space of "bridge additions."
+4.2 The Heuristic Function $h(n)$
+The heuristic $h(n)$ must estimate the cost to go: how many more bridges must be added to reach a solution?
+Based on the Graph Coloring analogy (saturation), the remaining work is determined by the residual capacity of the islands.
+Definition: Let $h(n)$ be half the sum of the remaining capacities of all islands given the partial assignment $\rho_n$.
+
+
+
+
+$$h(n) = \frac{1}{2} \sum_{i \in I} \max(0, D_i - \text{deg}(i, \rho_n))$$
+
+
+Where $\text{deg}(i, \rho_n)$ is the current number of bridges connected to island $i$ in assignment $\rho_n$.
+Explanation:
+1. Let $R_i = D_i - \text{deg}(i, \rho_n)$ be the residual capacity of island $i$.
+2. If the puzzle is solvable, every unit of residual capacity on island $i$ must eventually be satisfied by a bridge connecting $i$ to some neighbor $j$.
+3. Every future bridge added will reduce the residual capacity of exactly two islands (its endpoints) by 1 each.
+4. Therefore, to reduce the total system residual capacity $\sum R_i$ to 0, we must add exactly $(\sum R_i) / 2$ bridges.
+This heuristic $h(n)$ perfectly captures the "relaxed" problem where we ignore which specific bridges can be built (geometry/crossing constraints) and strictly count the numerical resource demand.15
+5. Proof of Admissibility and Consistency
+For A* to guarantee optimality (finding the solution with the minimum number of bridges—which is fixed here—or simply guaranteeing it finds a solution if one exists without over-searching), the heuristic must be admissible and consistent (monotone).16
+5.1 Proof of Admissibility
+Theorem 1: The heuristic $h(n) = \frac{1}{2} \sum_{i \in I} (D_i - \text{current\_deg}(i))$ is admissible.
+Proof:
+A heuristic is admissible if $0 \leq h(n) \leq h^*(n)$ for all nodes $n$, where $h^*(n)$ is the true optimal cost to reach the goal from $n$.18
+1. Let the true cost to reach the goal be the number of additional bridges required.
+2. Let $B_{remaining}$ be the set of bridges in the valid completion of the puzzle.
+3. Each bridge in $B_{remaining}$ connects two islands, $u$ and $v$.
+4. The addition of any bridge $b \in B_{remaining}$ contributes exactly 2 to the sum of degrees of the graph.
+5. The goal state requires the sum of degrees to equal $\sum D_i$.
+6. The current state has a sum of degrees $\sum \text{deg}(i, \rho_n)$.
+7. The deficit in degrees is $\Delta = \sum D_i - \sum \text{deg}(i, \rho_n) = \sum (D_i - \text{deg}(i, \rho_n))$.
+8. Since each bridge provides 2 units of degree, the number of bridges required is exactly $\Delta / 2$.
+9. Therefore, $h^*(n) = \Delta / 2$.
+10. Our heuristic is defined as $h(n) = \Delta / 2$.
+11. Thus, $h(n) = h^*(n)$.
+Since the heuristic value equals the true cost (in the relaxed problem where geometry is ignored), it never overestimates. Therefore, $h(n)$ is admissible.
+5.2 Proof of Consistency (Monotonicity)
+Theorem 2: The heuristic $h(n)$ is consistent.
+Proof:
+A heuristic is consistent if for every node $n$ and successor $n'$ generated by action $a$, $h(n) \leq c(n, n') + h(n')$, where $c(n, n')$ is the step cost.17
+We analyze the transitions in our search graph:
+Case 1: Positive Branch ($x_{uv} = \text{True}$)
+   * Action: We add a bridge between $u$ and $v$.
+   * Step Cost $c(n, n')$: The cost $g$ increases by 1 (one bridge added). So $c(n, n') = 1$.
+   * Heuristic Change:
+   * The degree of $u$ increases by 1; residual capacity decreases by 1.
+   * The degree of $v$ increases by 1; residual capacity decreases by 1.
+   * Total residual capacity decreases by 2.
+   * $h(n') = (\sum R - 2) / 2 = h(n) - 1$.
+   * Check: $h(n) \stackrel{?}{\leq} 1 + h(n')$.
+   * $h(n) \leq 1 + (h(n) - 1)$.
+   * $h(n) \leq h(n)$.
+   * This holds (equality).
+Case 2: Negative Branch ($x_{uv} = \text{False}$)
+   * Action: We decide not to place a bridge between $u$ and $v$.
+   * Step Cost $c(n, n')$: The cost $g$ increases by 0 (no bridge built).
+   * Heuristic Change:
+   * No degrees change.
+   * $h(n') = h(n)$.
+   * Check: $h(n) \stackrel{?}{\leq} 0 + h(n')$.
+   * $h(n) \leq h(n)$.
+   * This holds (equality).
+Conclusion:
+In all branching cases, the triangle inequality $h(n) \leq c(n, n') + h(n')$ holds. Therefore, the heuristic is consistent. Consistency ensures that the first time A* visits a node, it has found the optimal path to that node, allowing us to use a closed set to prevent re-expansion of states.18
+6. Algorithmic Implementation Architecture
+Implementing this A* solver requires replacing the standard PySAT calls with a custom priority-queue-based loop.
+6.1 Data Structures
+   * Node Structure:
+   * assignment: Map or Array of $\{VarID \to \{0, 1\}\}$.
+   * g: Integer (bridges built).
+   * h: Float (remaining capacity / 2).
+   * f: g + h.
+   * unassigned: List of variables yet to be decided.
+   * Open List: A min-heap (Priority Queue) storing Nodes, ordered by f.
+   * Closed Set: A hash set storing compact representations of visited states (e.g., hash of the assignment vector) to prevent cycles and redundant work.
+6.2 Integration of Unit Propagation
+A pure A* search on CNF variables can be slow because the branching factor is large. To optimize this, we must integrate Unit Propagation, a core component of DPLL/CDCL solvers 2, into the A* expansion step.
+When expanding node $n$:
+   1. Assert the decision variable (e.g., $x_{uv} = \text{True}$).
+   2. Propagate: Check all CNF clauses. If a clause becomes a unit clause (only one literal unassigned and the rest False), force that literal.
+   * Example: An island '3' has only two neighbors left. One neighbor is already connected by 1 bridge. The variable for "at least 1 bridge" to the second neighbor must be True.
+   3. Update State: Add all forced assignments to $\rho_n$. Update $g(n)$ and $h(n)$ based on the set of assignments (decision + forced).
+   4. Conflict Check: If propagation causes a conflict (empty clause), prune the child immediately.
+This hybridization allows A* to skip "obvious" intermediate steps and jump to deeper, more significant states in the solution space, effectively compressing the graph $g(n)$ traverses.
+6.3 Lazy Connectivity Verification
+To handle the global connectivity constraint without $O(N^3)$ clauses:
+   1. Maintain a Disjoint Set Union (DSU) / Union-Find data structure for each node in the search.
+   2. Whenever a bridge is added (in $g(n)$ update), union(u, v).
+   3. Heuristic Penalty: If the number of disjoint sets in the DSU is $k$, and the Minimum Spanning Tree (MST) cost to connect these sets using available (unassigned) edges is impossible to meet, prune the node.
+   4. Goal Check: When $h(n) = 0$ (all capacities filled), perform a final connectivity check. If the graph is not connected (DSU has > 1 set), the state is a "dead end" despite satisfying degree constraints. (This is rare with a good heuristic but possible).
+7. Performance and Optimization Analysis
+7.1 Space Complexity Considerations
+Standard SAT solvers (CDCL) operate with linear space regarding the number of variables (plus clause database). A*, however, stores all generated nodes in the Open/Closed lists, leading to exponential space complexity $O(b^d)$ in the worst case.18
+For Hashiwokakero, the depth $d$ is the number of bridges ($\approx \text{Islands} \times 1.5$), which can be large.
+To mitigate this, we recommend Iterative Deepening A (IDA)**.19
+   * IDA* uses the same $f(n)$ and admissible heuristic.
+   * It performs DFS (low memory) but cuts off search when $f(n)$ exceeds a threshold.
+   * The threshold is initialized to $h(root)$ and incremented to the minimum $f$-value of pruned nodes in each iteration.
+   * Since our cost increments are integers (or 0.5 steps), the threshold grows discretely, ensuring convergence.
+7.2 Comparison with PySAT (CDCL)
+   * Optimality: A* guarantees finding a solution with minimum cost (fewest bridges if multiple valid solutions exist with different counts, though usually the count is fixed). CDCL returns the first found, which may not be "optimal" in terms of graph structure if relaxed.
+   * Predictability: A* with the "Remaining Capacity" heuristic is deterministic and follows the gradient of the puzzle's constraints (like a human solving "forced moves" first).
+   * Overhead: A* has higher per-node overhead due to priority queue management compared to the extremely fast bitwise operations of CDCL unit propagation.
+8. Conclusion
+Replacing a general-purpose SAT solver with an A* algorithm for Hashiwokakero allows for a more interpretable and theoretically elegant solution process. By defining the state space as the Boolean hypercube of partial assignments and employing a cost function based on "bridges built" ($g(n)$) and a heuristic based on "residual capacity" ($h(n)$), we effectively map the logical satisfaction problem onto a shortest-path problem. The analogy to Graph Coloring highlights the importance of "saturation" in guiding the search, confirming that our capacity-based heuristic is not arbitrary but rooted in the fundamental structure of constraint satisfaction. The proof of admissibility and consistency ensures that this solver is robust, while the integration of unit propagation and lazy connectivity checks bridges the gap between heuristic search and logical deduction. This architecture offers a "glass-box" alternative to PySAT, capable of solving puzzles through intelligent, cost-guided construction rather than blind conflict-driven guessing.
+References
+1
+Nguồn trích dẫn
+   1. Hashiwokakero - Wikipedia, truy cập vào tháng 12 20, 2025, https://en.wikipedia.org/wiki/Hashiwokakero
+   2. SAT Solvers for CNF Formulas: common preliminaries — CS-E3220, truy cập vào tháng 12 20, 2025, https://users.aalto.fi/~tjunttil/2020-DP-AUT/notes-sat/solvers.html
+   3. Solving Hashiwokakero Puzzle Game with Hashi Solving Techniques and Depth First Search | Request PDF - ResearchGate, truy cập vào tháng 12 20, 2025, https://www.researchgate.net/publication/287545879_Solving_Hashiwokakero_Puzzle_Game_with_Hashi_Solving_Techniques_and_Depth_First_Search
+   4. Satisfiability - Salil Vadhan, truy cập vào tháng 12 20, 2025, https://salil.seas.harvard.edu/file_url/440
+   5. Boolean satisfiability problem - Wikipedia, truy cập vào tháng 12 20, 2025, https://en.wikipedia.org/wiki/Boolean_satisfiability_problem
+   6. Solving problems with CNF SAT solvers: The Sudoku example — CS-E3220, truy cập vào tháng 12 20, 2025, https://users.aalto.fi/~tjunttil/2022-DP-AUT/notes-sat/solving.html
+   7. Boolean satisfiability algorithm heuristics - Wikipedia, truy cập vào tháng 12 20, 2025, https://en.wikipedia.org/wiki/Boolean_satisfiability_algorithm_heuristics
+   8. Graph coloring - Wikipedia, truy cập vào tháng 12 20, 2025, https://en.wikipedia.org/wiki/Graph_coloring
+   9. The Graph Coloring Problem: Exact and Heuristic Solutions - Towards Data Science, truy cập vào tháng 12 20, 2025, https://towardsdatascience.com/the-graph-coloring-problem-exact-and-heuristic-solutions-169dce4d88ab/
+   10. Constructive Algorithms for Graph Colouring | Baeldung on Computer Science, truy cập vào tháng 12 20, 2025, https://www.baeldung.com/cs/graph-coloring-constructive-methods
+   11. HyColor: An Efficient Heuristic Algorithm for Graph Coloring - arXiv, truy cập vào tháng 12 20, 2025, https://arxiv.org/pdf/2506.07373
+   12. Benchmark Instances and Branch-and-Cut Algorithm for the Hashiwokakero Puzzle, truy cập vào tháng 12 20, 2025, https://par.cse.nsysu.edu.tw/resource/paper/2023/230425/Hashiwokakero%20Branch%20and%20Cut%202019.pdf
+   13. The Quest for Efficient Boolean Satisfiability Solvers - Princeton University, truy cập vào tháng 12 20, 2025, https://www.princeton.edu/~chaff/publication/cade_cav_2002.pdf
+   14. PhoenixSmaug/hashi: A highly efficient solver for the Hashiwokakero logic puzzle. - GitHub, truy cập vào tháng 12 20, 2025, https://github.com/PhoenixSmaug/hashi
+   15. 3.6.2 Designing a Heuristic Function, truy cập vào tháng 12 20, 2025, https://artint.info/2e/html2e/ArtInt2e.Ch3.S6.SS2.html
+   16. Admissibility of A* Algorithm - GeeksforGeeks, truy cập vào tháng 12 20, 2025, https://www.geeksforgeeks.org/dsa/a-is-admissible/
+   17. Consistent heuristic - Wikipedia, truy cập vào tháng 12 20, 2025, https://en.wikipedia.org/wiki/Consistent_heuristic
+   18. A* search algorithm - Wikipedia, truy cập vào tháng 12 20, 2025, https://en.wikipedia.org/wiki/A*_search_algorithm
+   19. Do Admissible Heuristics Ensure Optimal Solutions? | Baeldung on Computer Science, truy cập vào tháng 12 20, 2025, https://www.baeldung.com/cs/search-admissible-heuristics-optimal-solutions
+   20. An instance of the Hashiwokakero puzzle on the left, and a solution on... | Download Scientific Diagram - ResearchGate, truy cập vào tháng 12 20, 2025, https://www.researchgate.net/figure/An-instance-of-the-Hashiwokakero-puzzle-on-the-left-and-a-solution-on-the-right_fig4_40704800
+   21. In the A* Search Algorithm, why do we add g(n)? - Stack Overflow, truy cập vào tháng 12 20, 2025, https://stackoverflow.com/questions/41972765/in-the-a-search-algorithm-why-do-we-add-gn
+   22. Solving Optimal Satisfiability Problems Through Clause-Directed A* Robert J. Ragno - DSpace@MIT, truy cập vào tháng 12 20, 2025, https://dspace.mit.edu/bitstream/handle/1721.1/29242/51589373-MIT.pdf?sequence=2
+   23. Algorithm A* is a best-first search algorithm that relies on an open list and a closed list to find a path that is both optimal and complete towards the goal. It works by combining the benefits of the uniform-cost search and greedy search algorithms. A* makes use of both elements by including two separate path finding functions in its algorithm that take into account the cost from the root node to the current node and estimates the path cost from the current node to the goal node. - Stanford Computer Science, truy cập vào tháng 12 20, 2025, https://cs.stanford.edu/people/eroberts/courses/soco/projects/2003-04/intelligent-search/astar.html
+   24. Lecture 5: The ”animal kingdom” of heuristics: Admissible, Consistent, zero, Relaxed, Dominant, truy cập vào tháng 12 20, 2025, https://courses.grainger.illinois.edu/ece448/sp2020/slides/lec05.pdf
