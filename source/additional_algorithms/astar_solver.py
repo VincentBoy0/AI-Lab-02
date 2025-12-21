@@ -783,7 +783,6 @@ class AStarHashiSolver:
                 # No valid variable to branch on
                 continue
             
-            # Generate children: assign True or False to the variable
             for value in [TRUE, FALSE]:
                 new_assignment = dict(current.assignment)
                 new_assignment[next_var] = value
