@@ -277,11 +277,6 @@ class AStarHashiSolver:
                             self.cnf.add_clause([-v1, -v2])
                     
                     added_crossings.add(pair)
-        
-        # 3. Capacity constraints (encoded as cardinality constraints)
-        # For each island with capacity D, the sum of bridges must equal D
-        # This is complex to encode directly in CNF, so we handle it via
-        # the heuristic and constraint checking during search
         self._create_capacity_clauses()
     
     def _create_capacity_clauses(self):
@@ -476,18 +471,6 @@ class AStarHashiSolver:
                             unassigned_vars.discard(var2)
                             changed = True
                         continue
-                    
-                    # Calculate max contribution from this edge
-                    # With "exactly" semantics:
-                    # - var1=True means exactly 1 bridge (fixed)
-                    # - var2=True means exactly 2 bridges (fixed)
-                    # - Both False means 0 bridges (fixed)
-                    # - Unassigned means we can still choose
-                    # if remaining == 1:
-                    #     if assignment.get(var2) is None and assignment.get(var1) is None:
-                    #         assignment[var2] = FALSE
-                    #         unassigned_vars.discard(var2)
-                    #         changed = True
                     if assignment.get(var2) == TRUE:
                         max_contrib = 2  # Fixed at 2 bridges
                     elif assignment.get(var1) == TRUE:
@@ -507,22 +490,11 @@ class AStarHashiSolver:
                     if assignment.get(var2) != TRUE and assignment.get(var1) != TRUE:
                         available_edges.append((edge, max_contrib))
                         max_additional += max_contrib
-               
-                # Calculate max possible additional bridges (beyond current_deg)
-                # For assigned edges (var1=TRUE or var2=TRUE), their contribution is already in current_deg
-                # For unassigned edges, max contribution is their max_contrib, min is 0
                 
                 if max_additional < remaining:
-                    # Cannot satisfy remaining capacity - conflict
                     return assignment, list(unassigned_vars), False
-                
-                # Get truly unassigned edges (where we can still make a choice)
-                # still_needed = remaining (since min additional from unassigned edges is 0)
+
                 still_needed = remaining
-                
-                # KEY FIX: When max_additional == remaining, ALL unassigned edges MUST contribute their max
-                # This is valid unit propagation since there's no slack
-                # If capacity is full, close remaining edges
                 if remaining == 0:
                     for edge in self.cnf.island_edges[island]:
                         var1 = self.cnf.edge_to_var1[edge]

@@ -1,11 +1,12 @@
 """
 Comparison Script for Hashiwokakero Solvers
 
-This script compares 4 different algorithms for solving Hashiwokakero puzzles:
+This script compares different algorithms for solving Hashiwokakero puzzles:
 1. PySAT CNF Solver (CDCL-based)
-2. A* on CNF Solution Space
-3. Backtracking with Constraint Propagation
-4. Brute Force (if available)
+2. A* on CNF Solution Space (Boolean variable assignments)
+3. A* Original (Edge-based state space)
+4. Backtracking with Constraint Propagation
+5. Brute Force (if available)
 
 Metrics compared:
 - Execution time
@@ -26,6 +27,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from HashiwokakeroSolver import HashiSolver
 from additional_algorithms.astar_solver import AStarHashiSolver, solve_hashiwokakero_astar_cnf, format_solution_grid
 from additional_algorithms.backtrack import Backtrack
+from additional_algorithms.A_Star import AStar
 
 
 class SolverResult:
@@ -225,6 +227,33 @@ def run_backtrack_solver(grid: List[List[int]], timeout: float = 60.0) -> Solver
     return result
 
 
+def run_astar_original_solver(grid: List[List[int]], timeout: float = 60.0) -> SolverResult:
+    """Run the original A* solver (edge-based state space)."""
+    result = SolverResult("A* Original")
+    
+    try:
+        start_time = time.time()
+        solver = AStar(grid)
+        solution = solver.solve()
+        result.time_taken = time.time() - start_time
+        
+        if solution is not None and len(solution) > 0:
+            result.solution = solution
+            result.success = True
+            result.stats = {
+                'num_islands': len(solver.islands),
+                'num_edges': len(solver.edges)
+            }
+        else:
+            result.success = False
+            result.error = "No solution found"
+    except Exception as e:
+        result.error = str(e)
+        result.time_taken = time.time() - start_time
+    
+    return result
+
+
 def run_brute_force_solver(grid: List[List[int]], timeout: float = 60.0) -> SolverResult:
     """Run the Brute Force solver (placeholder if not implemented)."""
     result = SolverResult("Brute Force")
@@ -400,7 +429,7 @@ def run_test_suite(test_dir: str = "tests/input", verbose: bool = True):
     print("SUMMARY - ALL TESTS")
     print("=" * 100)
     
-    print(f"\n{'Test':<20} {'PySAT':<15} {'A* CNF':<15} {'Backtrack':<15}")
+    print(f"\n{'Test':<20} {'PySAT':<15} {'A* CNF':<15}  {'Backtrack':<15}")
     print("-" * 100)
     
     for test_name, results in all_results:
@@ -414,7 +443,7 @@ def run_test_suite(test_dir: str = "tests/input", verbose: bool = True):
                     row.append(f"✗ {r.time_taken:.3f}s")
             else:
                 row.append("N/A")
-        print(f"{row[0]:<20} {row[1]:<15} {row[2]:<15} {row[3]:<15}")
+        print(f"{row[0]:<20} {row[1]:<15} {row[2]:<15} {row[3] if len(row) > 3 else 'N/A':<15}")
 
 
 # Interactive mode
