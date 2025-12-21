@@ -1,5 +1,7 @@
 from HashiwokakeroSolver import HashiSolver
 from additional_algorithms.backtrack import Backtrack
+from additional_algorithms.brute_force import BruteForce
+from additional_algorithms.A_Star import AStar
 import os
 import copy
 def read_test(file):
@@ -32,7 +34,7 @@ def run_test_case(input_path, output_path):
     
     print(f"Solving input from file: {input_path}")
     
-    solver = HashiSolver(grid)
+    solver = BruteForce(grid)
     ans = solver.solve()
     # print(ans)
 
